@@ -52,6 +52,8 @@ import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.ResolvedArtifact;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.maven.Conf2ScopeMappingContainer;
+import org.gradle.api.artifacts.maven.MavenPom;
+import org.gradle.api.artifacts.maven.MavenResolver;
 import org.gradle.api.artifacts.result.ArtifactResolutionResult;
 import org.gradle.api.artifacts.result.ArtifactResult;
 import org.gradle.api.artifacts.result.ComponentArtifactsResult;
@@ -68,6 +70,7 @@ import org.gradle.api.tasks.GroovySourceSet;
 import org.gradle.api.tasks.JavaExec;
 import org.gradle.api.tasks.ScalaSourceSet;
 import org.gradle.api.tasks.SourceSet;
+import org.gradle.api.tasks.Upload;
 import org.gradle.api.tasks.bundling.Jar;
 import org.gradle.api.tasks.compile.GroovyCompile;
 import org.gradle.api.tasks.compile.JavaCompile;
@@ -949,15 +952,31 @@ public abstract class UserBasePlugin<T extends UserBaseExtension> extends BasePl
         if (project.getPlugins().hasPlugin("maven"))
         {
             MavenPluginConvention mavenConv = (MavenPluginConvention) project.getConvention().getPlugins().get("maven");
-            Conf2ScopeMappingContainer mappings = mavenConv.getConf2ScopeMappings();
             ConfigurationContainer configs = project.getConfigurations();
-            final int priority = 500; // 500 is more than the compile config which is at 300
 
-            mappings.setSkipUnmappedConfs(true); // dont want unmapped confs bieng compile deps..
-            mappings.addMapping(priority, configs.getByName(CONFIG_PROVIDED), Conf2ScopeMappingContainer.PROVIDED);
-            mappings.addMapping(priority, configs.getByName(CONFIG_DEOBF_COMPILE), Conf2ScopeMappingContainer.COMPILE);
-            mappings.addMapping(priority, configs.getByName(CONFIG_DEOBF_PROVIDED), Conf2ScopeMappingContainer.PROVIDED);
+            //add to the global stuff; what the plugin used to do
+            addMappings(mavenConv.getConf2ScopeMappings(), configs);
+
+            //forcibly insert it into existing poms
+            Upload uploadArchives = project.getTasks().withType(Upload.class).findByName(org.gradle.api.plugins.BasePlugin.UPLOAD_ARCHIVES_TASK_NAME);
+            if (uploadArchives == null) {
+                return;
+            }
+
+            for (MavenResolver resolver : uploadArchives.getRepositories().withType(MavenResolver.class)) {
+                MavenPom pom = resolver.getPom();
+                addMappings(pom.getScopeMappings(), configs);
+            }
         }
+    }
+
+    private void addMappings(Conf2ScopeMappingContainer mappings, ConfigurationContainer configs){
+        final int priority = 500; // 500 is more than the compile config which is at 300
+
+        mappings.setSkipUnmappedConfs(true); // dont want unmapped confs being compile deps..
+        mappings.addMapping(priority, configs.getByName(CONFIG_PROVIDED), Conf2ScopeMappingContainer.PROVIDED);
+        mappings.addMapping(priority, configs.getByName(CONFIG_DEOBF_COMPILE), Conf2ScopeMappingContainer.COMPILE);
+        mappings.addMapping(priority, configs.getByName(CONFIG_DEOBF_PROVIDED), Conf2ScopeMappingContainer.PROVIDED);
     }
 
     private static final Spec<File> AT_SPEC = new Spec<File>()
