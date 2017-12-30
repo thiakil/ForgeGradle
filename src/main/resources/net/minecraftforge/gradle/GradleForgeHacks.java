@@ -24,12 +24,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringTokenizer;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
@@ -68,10 +67,10 @@ public class GradleForgeHacks
         {
             // no core searching
             GradleStartCommon.LOGGER.info("GradleStart coremod searching disabled!");
-            
+
             // remove it so it cant potentially screw up the bonced start class
             common.extras.remove(NO_CORE_SEARCH);
-            
+
             return;
         }
 
@@ -84,16 +83,17 @@ public class GradleForgeHacks
         catch (Throwable t)
         {}
 
-        for (URL url : ((URLClassLoader) GradleStartCommon.class.getClassLoader()).getURLs())
-        {
-            if (!url.getProtocol().startsWith("file")) // because file urls start with file://
-                continue; //         this isnt a file
+        final String classpathStr = appendPath(System.getProperty("java.class.path"), System.getProperty("env.class.path"));;
+        final StringTokenizer strTokenizer = new StringTokenizer(classpathStr, File.pathSeparator);
 
-            File coreMod = new File(url.toURI().getPath());
-            Manifest manifest = null;
+        while (strTokenizer.hasMoreTokens())
+        {
+            File coreMod = new File(strTokenizer.nextToken());
 
             if (!coreMod.exists())
                 continue;
+
+            Manifest manifest = null;
 
             if (coreMod.isDirectory())
             {
@@ -138,6 +138,16 @@ public class GradleForgeHacks
         {
             common.extras.add("--tweakClass");
             common.extras.add("net.minecraftforge.gradle.tweakers.CoremodTweaker");
+        }
+    }
+
+    public static String appendPath(String pathTo, String pathFrom) {
+        if (pathTo == null || pathTo.length() == 0) {
+            return pathFrom;
+        } else if (pathFrom == null || pathFrom.length() == 0) {
+            return pathTo;
+        } else {
+            return pathTo  + File.pathSeparator + pathFrom;
         }
     }
 
