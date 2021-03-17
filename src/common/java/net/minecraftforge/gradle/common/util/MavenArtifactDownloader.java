@@ -25,12 +25,15 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion;
+import org.gradle.api.Action;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ExternalModuleDependency;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.repositories.ArtifactRepository;
 import org.gradle.api.artifacts.repositories.MavenArtifactRepository;
+import org.gradle.api.internal.artifacts.repositories.ArtifactResolutionDetails;
+import org.gradle.api.internal.artifacts.repositories.ContentFilteringRepository;
 import org.xml.sax.SAXException;
 
 import net.minecraftforge.artifactural.gradle.GradleRepositoryAdapter;
@@ -143,7 +146,7 @@ public class MavenArtifactDownloader {
     private static File _manual(Project project, List<MavenArtifactRepository> repos, Artifact artifact, boolean changing) throws IOException, URISyntaxException {
         if (!artifact.getVersion().endsWith("+") && !artifact.isSnapshot()) {
             for (MavenArtifactRepository repo : repos) {
-                Pair<Artifact, File> pair = _manualMaven(project, repo.getUrl(), artifact, changing);
+                Pair<Artifact, File> pair = _manualMaven(project, repo, artifact, changing);
                 if (pair != null && pair.getValue().exists())
                     return pair.getValue();
             }
@@ -154,7 +157,7 @@ public class MavenArtifactDownloader {
 
         // Gather list of all versions from all repos.
         for (MavenArtifactRepository repo : repos) {
-            Pair<Artifact, File> pair = _manualMaven(project, repo.getUrl(), artifact, changing);
+            Pair<Artifact, File> pair = _manualMaven(project, repo, artifact, changing);
             if (pair != null && pair.getValue().exists())
                 versions.add(pair);
         }
@@ -177,7 +180,19 @@ public class MavenArtifactDownloader {
     }
 
     @SuppressWarnings("unchecked")
-    private static Pair<Artifact, File> _manualMaven(Project project, URI maven, Artifact artifact, boolean changing) throws IOException, URISyntaxException {
+    private static Pair<Artifact, File> _manualMaven(Project project, MavenArtifactRepository mavenRepo, Artifact artifact, boolean changing) throws IOException, URISyntaxException {
+        if (mavenRepo instanceof ContentFilteringRepository) {
+            //Check if the repo is configured n such a way as to support this artifact or not
+            Action<? super ArtifactResolutionDetails> contentFilter = ((ContentFilteringRepository) mavenRepo).getContentFilter();
+            MavenArtifactResolutionDetails details = new MavenArtifactResolutionDetails(artifact, "forgegradle_manualMaven");
+            contentFilter.execute(details);
+            if (details.wontBeFound)
+                return null;//This repo is not configured to support the artifact
+        }
+        if ("sources".equals(artifact.getClassifier()) && artifact.getGroup().equals("curse.maven")){
+            return null;//no haz sources
+        }
+        URI maven = mavenRepo.getUrl();
         if (artifact.getVersion().endsWith("+")) {
             //I THINK +'s are only valid in the end version, So 1.+ and not 1.+.4 as that'd make no sense.
             //It also appears you can't do something like 1.5+ to NOT get 1.4/1.3. So.. mimic that.
